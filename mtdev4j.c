@@ -12,10 +12,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "../MTDevInputSource/bin/org_mt4j_input_inputSources_MTDevice.h"
+#include "../MTDevInputSource/bin/org_mt4j_input_inputSources_MTDevInputSource.h"
 
-void loadDeviceCaps(JNIEnv *env, jclass clazz, jobject instance);
-void devClose();
+//void devClose();
 
 int fd;
 struct mtdev dev;
@@ -40,85 +39,66 @@ void warn(char *fmt, ...) {
 	fprintf(stderr, "\n");
 }
 
-#define TEST_ENV_EXCEPTION(env)			\
-		if ((*env)->ExceptionOccurred(env)) { \
-			(*env)->ExceptionDescribe(env); \
-		}
-
-#define TEST_ENV_EXCEPTION_RET(env)			\
-		if ((*env)->ExceptionOccurred(env)) { \
-			(*env)->ExceptionDescribe(env); \
-			devClose(); \
-			return NULL ; \
-		}
-
-#define CHECK(dev, name)			\
-	if (mtdev_has_mt_event(dev, name))	\
-		info("   %s [min=%d; max=%d; fuzz: %d; res:%d]", #name, \
-				mtdev_get_abs_minimum(dev, name), \
-				mtdev_get_abs_maximum(dev, name), \
-				mtdev_get_abs_fuzz(dev, name), \
-				mtdev_get_abs_resolution(dev, name))
-
-JNIEXPORT jobject JNICALL Java_org_mt4j_input_inputSources_MTDevice_openDevice(
-		JNIEnv *env, jclass clazz, jstring filename) {
+JNIEXPORT jboolean JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_openDevice(
+		JNIEnv *env, jobject this, jstring filename) {
 	// get native string from java
 	const char *_filename = (*env)->GetStringUTFChars(env, filename, JNI_FALSE);
 
-	// open device
+	// open device file
 	fd = open(_filename, O_RDONLY | O_NONBLOCK);
 	if (fd < 0) {
 		warn("Could not open the device %s", _filename);
-		return NULL;
+		return JNI_FALSE;
 	}
 
-	// grab the device
+	// grab the device file
 	if (ioctl(fd, EVIOCGRAB, 1)) {
 		warn("Could not grab the device %s", _filename);
-		return NULL;
+		return JNI_FALSE;
 	}
 
-	// open as an MT device
+	// open device through mtdev
 	// note: mtdev_open automatically calls mtdev_close on error
 	int mtfd = mtdev_open(&dev, fd);
 	if (mtfd) {
 		warn("mtdev could not open device: %d", mtfd);
-		return NULL;
+		return JNI_FALSE;
 	}
-
-	info("Multi-touch device %s opened", _filename);
-
-	// get MTDeviceCaps class default constructor
-	jmethodID clazz_init = (*env)->GetMethodID(env, clazz, "<init>", "()V");
-	TEST_ENV_EXCEPTION_RET(env);
-
-	// build instance
-	jobject instance = (*env)->NewObject(env, clazz, clazz_init);
-	TEST_ENV_EXCEPTION_RET(env);
-
-	// get device capacities
-	loadDeviceCaps(env, clazz, instance);
 
 	// release native string
 	(*env)->ReleaseStringUTFChars(env, filename, _filename);
 
-	return instance;
+	return JNI_TRUE;
 }
 
+#define TEST_ENV_EXCEPTION(env)			\
+	/* test JNI env for occured exception */ \
+	if ((*env)->ExceptionOccurred(env)) { \
+		(*env)->ExceptionDescribe(env); \
+	}
+
 #define SET_ABS_FIELD_VALUE(dev, clazz, instance, name)			\
+		/* test that dev has #name capability */ \
 		if (mtdev_has_mt_event(&dev, name)) { \
+			/* get capability flag in java class */ \
 			fieldId = (*env)->GetFieldID(env, clazz, "is_"#name, "Z"); \
 			TEST_ENV_EXCEPTION(env); \
+			/* set flag to true */ \
 			(*env)->SetIntField(env, instance, fieldId, JNI_TRUE); \
 			TEST_ENV_EXCEPTION(env); \
+			/* get capability attribute in java class */ \
 			fieldId = (*env)->GetFieldID(env, clazz, #name, "I"); \
 			TEST_ENV_EXCEPTION(env); \
+			/* set capability attribute value */ \
 			(*env)->SetIntField(env, instance, fieldId, mtdev_get_abs_maximum(&dev, name)); \
 			TEST_ENV_EXCEPTION(env); \
 		}
 
-void loadDeviceCaps(JNIEnv *env, jclass clazz, jobject instance) {
+JNIEXPORT void JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_loadDeviceCaps(
+		JNIEnv *env, jobject instance) {
+	jclass clazz = (*env)->GetObjectClass(env, instance);
 	jfieldID fieldId;
+
 	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_SLOT);
 	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_TOUCH_MAJOR);
 	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_TOUCH_MINOR);
@@ -136,15 +116,8 @@ void loadDeviceCaps(JNIEnv *env, jclass clazz, jobject instance) {
 	return;
 }
 
-JNIEXPORT void JNICALL Java_org_mt4j_input_inputSources_MTDevice_closeDevice(
+JNIEXPORT void JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_closeDevice(
 		JNIEnv *env, jobject this) {
-
-	devClose();
-
-	return;
-}
-
-void devClose() {
 	// only closing something open
 	if (fd < 0)
 		return;
@@ -159,4 +132,5 @@ void devClose() {
 	close(fd);
 
 	info("File description #%d closed", fd);
+	return;
 }
