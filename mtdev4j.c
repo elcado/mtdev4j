@@ -6,46 +6,26 @@
  */
 
 #include <stdio.h>
-#include <stdarg.h>
 #include <jni.h>
 #include <mtdev.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <string.h>
+#include <errno.h>
 
 #include "../MTDevInputSource/bin/org_mt4j_input_inputSources_MTDevInputSource.h"
-
-//void devClose();
+#include "mtdev4j.h"
 
 int fd;
 struct mtdev dev;
 
-void info(char *fmt, ...) {
-	va_list argp;
-
-	fprintf(stdout, "libmtdev4j.so: ");
-	va_start(argp, fmt);
-	vfprintf(stdout, fmt, argp);
-	va_end(argp);
-	fprintf(stdout, "\n");
-}
-
-void warn(char *fmt, ...) {
-	va_list argp;
-
-	fprintf(stderr, "libmtdev4j.so: ");
-	va_start(argp, fmt);
-	vfprintf(stderr, fmt, argp);
-	va_end(argp);
-	fprintf(stderr, "\n");
-}
-
-JNIEXPORT jboolean JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_openDevice(
+jboolean JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_openDevice(
 		JNIEnv *env, jobject this, jstring filename) {
 	// get native string from java
 	const char *_filename = (*env)->GetStringUTFChars(env, filename, JNI_FALSE);
 
 	// open device file
-	fd = open(_filename, O_RDONLY | O_NONBLOCK);
+	fd = open(_filename, O_RDONLY);// | O_NONBLOCK);
 	if (fd < 0) {
 		warn("Could not open the device %s", _filename);
 		return JNI_FALSE;
@@ -65,34 +45,41 @@ JNIEXPORT jboolean JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_ope
 		return JNI_FALSE;
 	}
 
+	// set name attribute value in java class
+	if (!loadDeviceName(env, this)) {
+		warn("Could not get device name for %s", _filename);
+		return JNI_FALSE;
+	}
+
 	// release native string
 	(*env)->ReleaseStringUTFChars(env, filename, _filename);
 
 	return JNI_TRUE;
 }
 
-#define TEST_ENV_EXCEPTION(env)			\
-	/* test JNI env for occured exception */ \
-	if ((*env)->ExceptionOccurred(env)) { \
-		(*env)->ExceptionDescribe(env); \
+int loadDeviceName(JNIEnv* env, jobject this) {
+	// get device name
+	char name[DEV_NAME_LENGTH] = "Unkown";
+	if(! ioctl(fd, EVIOCGNAME(sizeof(name)), name)) {
+		return JNI_FALSE;
 	}
 
-#define SET_ABS_FIELD_VALUE(dev, clazz, instance, name)			\
-		/* test that dev has #name capability */ \
-		if (mtdev_has_mt_event(&dev, name)) { \
-			/* get capability flag in java class */ \
-			fieldId = (*env)->GetFieldID(env, clazz, "is_"#name, "Z"); \
-			TEST_ENV_EXCEPTION(env); \
-			/* set flag to true */ \
-			(*env)->SetIntField(env, instance, fieldId, JNI_TRUE); \
-			TEST_ENV_EXCEPTION(env); \
-			/* get capability attribute in java class */ \
-			fieldId = (*env)->GetFieldID(env, clazz, #name, "I"); \
-			TEST_ENV_EXCEPTION(env); \
-			/* set capability attribute value */ \
-			(*env)->SetIntField(env, instance, fieldId, mtdev_get_abs_maximum(&dev, name)); \
-			TEST_ENV_EXCEPTION(env); \
-		}
+	jclass clazz = (*env)->GetObjectClass(env, this);
+
+	// get name attribute in java class
+	jfieldID fieldId = (*env)->GetFieldID(env, clazz, "devName", "Ljava/lang/String;");
+	TEST_ENV_EXCEPTION(env);
+
+	// build String on name
+	jstring jName = (*env)->NewStringUTF(env, name);
+	TEST_ENV_EXCEPTION(env);
+
+	// set class attribute value
+	(*env)->SetObjectField(env, this, fieldId, jName);
+	TEST_ENV_EXCEPTION(env);
+
+	return JNI_TRUE;
+}
 
 JNIEXPORT void JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_loadDeviceCaps(
 		JNIEnv *env, jobject instance) {
@@ -116,6 +103,39 @@ JNIEXPORT void JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_loadDev
 	return;
 }
 
+JNIEXPORT void JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_startEventLoop
+  (JNIEnv *env, jobject this){
+	struct input_event ev;
+
+	// while the device has not been inactive for five seconds
+	while (mtdev_get(&dev, fd, &ev, 1) > 0) {
+		propagate_event(env, this, &ev);
+	}
+}
+
+void propagate_event(JNIEnv *env, jobject this, const struct input_event *ev)
+{
+	static int slot;
+
+	// get slot id
+	if (ev->type == EV_ABS && ev->code == ABS_MT_SLOT) {
+		slot = ev->value;
+		return;
+	}
+
+	jclass clazz = (*env)->GetObjectClass(env, this);
+
+	// get callback method in java class
+	jmethodID methodId = (*env)->GetMethodID(env, clazz, "onMTDevTouch", "(IIII)V");
+	TEST_ENV_EXCEPTION(env);
+
+	// call callbask
+	(*env)->CallVoidMethod(env, this, methodId, slot, ev->type, ev->code, ev->value);
+	TEST_ENV_EXCEPTION(env);
+
+	return;
+}
+
 JNIEXPORT void JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_closeDevice(
 		JNIEnv *env, jobject this) {
 	// only closing something open
@@ -131,6 +151,15 @@ JNIEXPORT void JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_closeDe
 	// close device
 	close(fd);
 
-	info("File description #%d closed", fd);
 	return;
+}
+
+void warn(char *fmt, ...) {
+	va_list argp;
+
+	fprintf(stderr, "libmtdev4j.so: ");
+	va_start(argp, fmt);
+	vfprintf(stderr, fmt, argp);
+	va_end(argp);
+	fprintf(stderr, "\n");
 }
