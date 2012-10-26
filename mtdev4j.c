@@ -81,24 +81,36 @@ int loadDeviceName(JNIEnv* env, jobject this) {
 	return JNI_TRUE;
 }
 
+#define ADD_ABS_MT_CAP(name)			\
+		/* test that dev has #name capability */ \
+		if (mtdev_has_mt_event(&dev, name)) { \
+			(*env)->CallVoidMethod(env, instance, methodId, name, mtdev_get_abs_minimum(&dev, name), mtdev_get_abs_maximum(&dev, name)); \
+			TEST_ENV_EXCEPTION(env); \
+		}
+
 JNIEXPORT void JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_loadDeviceCaps(
 		JNIEnv *env, jobject instance) {
+	// get instance clazz
 	jclass clazz = (*env)->GetObjectClass(env, instance);
-	jfieldID fieldId;
 
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_SLOT);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_TOUCH_MAJOR);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_TOUCH_MINOR);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_WIDTH_MAJOR);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_WIDTH_MINOR);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_ORIENTATION);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_POSITION_X);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_POSITION_Y);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_TOOL_TYPE);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_BLOB_ID);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_TRACKING_ID);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_PRESSURE);
-	SET_ABS_FIELD_VALUE(dev, clazz, instance, ABS_MT_DISTANCE);
+	// get ABS_MT cap setter method in java class
+	jmethodID methodId = (*env)->GetMethodID(env, clazz, "addCap", "(III)V");
+	TEST_ENV_EXCEPTION(env);
+
+	// set values
+	ADD_ABS_MT_CAP(ABS_MT_SLOT);
+	ADD_ABS_MT_CAP(ABS_MT_TOUCH_MAJOR);
+	ADD_ABS_MT_CAP(ABS_MT_TOUCH_MINOR);
+	ADD_ABS_MT_CAP(ABS_MT_WIDTH_MAJOR);
+	ADD_ABS_MT_CAP(ABS_MT_WIDTH_MINOR);
+	ADD_ABS_MT_CAP(ABS_MT_ORIENTATION);
+	ADD_ABS_MT_CAP(ABS_MT_POSITION_X);
+	ADD_ABS_MT_CAP(ABS_MT_POSITION_Y);
+	ADD_ABS_MT_CAP(ABS_MT_TOOL_TYPE);
+	ADD_ABS_MT_CAP(ABS_MT_BLOB_ID);
+	ADD_ABS_MT_CAP(ABS_MT_TRACKING_ID);
+	ADD_ABS_MT_CAP(ABS_MT_PRESSURE);
+	ADD_ABS_MT_CAP(ABS_MT_DISTANCE);
 
 	return;
 }
