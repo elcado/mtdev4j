@@ -1,19 +1,22 @@
 /*
- * Copyright 2012 Frédéric Cadier <f.cadier@free.fr>
+ * Copyright Frédéric Cadier (2012)
  *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library. If not, see
- * <http://www.gnu.org/licenses/>.
+ * This software is a computer program whose purpose is to allow component programming in pure java.
+ * 
+ * This software is governed by the CeCILL-C license under French law and abiding by the rules of distribution of free software. You can use, modify
+ * and/ or redistribute the software under the terms of the CeCILL-C license as circulated by CEA, CNRS and INRIA at the following URL
+ * "http://www.cecill.info".
+ * 
+ * As a counterpart to the access to the source code and rights to copy, modify and redistribute granted by the license, users are provided only with
+ * a limited warranty and the software's author, the holder of the economic rights, and the successive licensors have only limited liability.
+ * 
+ * In this respect, the user's attention is drawn to the risks associated with loading, using, modifying and/or developing or reproducing the software
+ * by the user in light of its specific status of free software, that may mean that it is complicated to manipulate, and that also therefore means
+ * that it is reserved for developers and experienced professionals having in-depth computer knowledge. Users are therefore encouraged to load and
+ * test the software's suitability as regards their requirements in conditions enabling the security of their systems and/or data to be ensured and,
+ * more generally, to use and operate it in the same conditions as regards security.
+ * 
+ * The fact that you are presently reading this means that you have had knowledge of the CeCILL-C license and that you accept its terms.
  */
 
 #include <stdio.h>
@@ -34,6 +37,7 @@ jboolean JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_openDevice(
 		JNIEnv *env, jobject this, jstring filename) {
 	// get native string from java
 	const char *_filename = (*env)->GetStringUTFChars(env, filename, JNI_FALSE);
+	TEST_ENV_EXCEPTION(env);
 
 	// open device file
 	fd = open(_filename, O_RDONLY);// | O_NONBLOCK);
@@ -64,16 +68,18 @@ jboolean JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_openDevice(
 
 	// release native string
 	(*env)->ReleaseStringUTFChars(env, filename, _filename);
+	TEST_ENV_EXCEPTION(env);
 
 	return JNI_TRUE;
 }
 
 int loadDeviceName(JNIEnv* env, jobject this) {
 	// get device name
-	char name[DEV_NAME_LENGTH] = "Unkown";
-	if(! ioctl(fd, EVIOCGNAME(sizeof(name)), name)) {
+	char name[DEV_NAME_LENGTH] = "Unknown";
+	if(! ioctl(fd, EVIOCGNAME(sizeof(name)-1), name)) {
 		return JNI_FALSE;
 	}
+    name[DEV_NAME_LENGTH-1]=0;  // make sure it is null-terminated
 
 	jclass clazz = (*env)->GetObjectClass(env, this);
 
@@ -152,7 +158,7 @@ void propagate_event(JNIEnv *env, jobject this, const struct input_event *ev)
 	jmethodID methodId = (*env)->GetMethodID(env, clazz, "onMTDevTouch", "(IIII)V");
 	TEST_ENV_EXCEPTION(env);
 
-	// call callbask
+	// call callback
 	(*env)->CallVoidMethod(env, this, methodId, slot, ev->type, ev->code, ev->value);
 	TEST_ENV_EXCEPTION(env);
 
