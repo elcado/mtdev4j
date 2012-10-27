@@ -66,17 +66,17 @@ int loadDeviceName(JNIEnv* env, jobject this) {
 
 	jclass clazz = (*env)->GetObjectClass(env, this);
 
-	// get name attribute in java class
-	jfieldID fieldId = (*env)->GetFieldID(env, clazz, "devName", "Ljava/lang/String;");
-	TEST_ENV_EXCEPTION(env);
-
 	// build String on name
 	jstring jName = (*env)->NewStringUTF(env, name);
 	TEST_ENV_EXCEPTION(env);
 
-	// set class attribute value
-	(*env)->SetObjectField(env, this, fieldId, jName);
+	// get name attribute setter from java class
+	jmethodID methodId = (*env)->GetMethodID(env, clazz, "setDevName", "(Ljava/lang/String;)V");
 	TEST_ENV_EXCEPTION(env);
+
+	// set class attribute value
+	(*env)->CallVoidMethod(env, this, methodId, jName);
+	TEST_ENV_EXCEPTION(env); \
 
 	return JNI_TRUE;
 }
