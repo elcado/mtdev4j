@@ -34,6 +34,7 @@ jboolean JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_openDevice(
 		JNIEnv *env, jobject this, jstring filename) {
 	// get native string from java
 	const char *_filename = (*env)->GetStringUTFChars(env, filename, JNI_FALSE);
+	TEST_ENV_EXCEPTION(env);
 
 	// open device file
 	fd = open(_filename, O_RDONLY);// | O_NONBLOCK);
@@ -64,16 +65,18 @@ jboolean JNICALL Java_org_mt4j_input_inputSources_MTDevInputSource_openDevice(
 
 	// release native string
 	(*env)->ReleaseStringUTFChars(env, filename, _filename);
+	TEST_ENV_EXCEPTION(env);
 
 	return JNI_TRUE;
 }
 
 int loadDeviceName(JNIEnv* env, jobject this) {
 	// get device name
-	char name[DEV_NAME_LENGTH] = "Unkown";
-	if(! ioctl(fd, EVIOCGNAME(sizeof(name)), name)) {
+	char name[DEV_NAME_LENGTH] = "Unknown";
+	if(! ioctl(fd, EVIOCGNAME(sizeof(name)-1), name)) {
 		return JNI_FALSE;
 	}
+    name[DEV_NAME_LENGTH-1]=0;  // make sure it is null-terminated
 
 	jclass clazz = (*env)->GetObjectClass(env, this);
 
@@ -152,7 +155,7 @@ void propagate_event(JNIEnv *env, jobject this, const struct input_event *ev)
 	jmethodID methodId = (*env)->GetMethodID(env, clazz, "onMTDevTouch", "(IIII)V");
 	TEST_ENV_EXCEPTION(env);
 
-	// call callbask
+	// call callback
 	(*env)->CallVoidMethod(env, this, methodId, slot, ev->type, ev->code, ev->value);
 	TEST_ENV_EXCEPTION(env);
 
