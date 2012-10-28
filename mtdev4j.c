@@ -27,7 +27,7 @@
 #include <string.h>
 #include <errno.h>
 
-#include "../MTDevInputSource/bin/org_mt4j_input_inputSources_MTDevInputSource.h"
+#include "mtdev4j_jni.h"
 #include "mtdev4j.h"
 
 int fd;
